@@ -23,7 +23,7 @@ class LedClock:
     Main Clock Object to display different clock styles
     on RaspberryPi's SenseHat 8x8 LED Display
     ============================================================================================== by Sziller ==="""
-    def __init__(self, clock_style: int = 0, duration: int = 0, low_light: bool = True, heartbeat: int = 2):
+    def __init__(self, clock_style: int = 0, duration: int = 0, low_light: bool = True, heartbeat: int = 2, **kwargs):
         # if imported_sense_hat:
         self.sense = SenseHat()
         self.sense.low_light            = low_light

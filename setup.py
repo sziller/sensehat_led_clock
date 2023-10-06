@@ -18,6 +18,8 @@ setup(
     author='sziller',  # well obvious
     author_email='sziller@gmail.com',  # well obvious
     description='SenseHat mounted 8x8 sized LED-clock',  # well obvious
-    install_requires=["sensehat_assist", "sense_emu", "sense_hat"],
+    install_requires=[
+        "sense_emu",
+        "sense_hat"],
     dependency_links=[],  # if dependent on external projects
 )
