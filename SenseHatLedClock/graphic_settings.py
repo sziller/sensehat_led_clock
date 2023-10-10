@@ -1,6 +1,6 @@
 """strictly graphics related, static variable definitions"""
 
-COLORTABLE = {'background': [0, 0, 0], 'number': [150, 150, 150], 'perim': [0, 255, 0]}
+COLORTABLE = {'background': [0, 0, 0], 'number': [255, 255, 255], 'perim': [0, 255, 0]}
 NUMBERS_8x8 = {
         0:  [[0, 0, 0, 0, 0, 0, 0, 0],
              [0, 0, 0, 1, 1, 0, 0, 0],

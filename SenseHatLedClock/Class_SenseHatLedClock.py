@@ -5,6 +5,7 @@ by Sziller @sziller.eu
 """
 
 import time
+import inspect
 from SenseHatLedClock import graphic_settings as gs
 from SenseHatCustomExceptions import DisplayErrors as DiEr
 
@@ -20,9 +21,9 @@ except ImportError as e1:
     except ImportError as e2:
         raise DiEr.MissingDisplay()
 
-print("===========================")
-print("= using: {:^16} =".format({True: "SenseHat", False: "Emulator"}[LIVE]))
-print("===========================")
+print("====================================")
+print("= LedClock using: {:^16} =".format({True: "SenseHat", False: "Emulator"}[LIVE]))
+print("====================================")
 
 
 class LedClock:
@@ -30,7 +31,13 @@ class LedClock:
     Main Clock Object to display different clock styles
     on RaspberryPi's SenseHat 8x8 LED Display
     ============================================================================================== by Sziller ==="""
-    def __init__(self, clock_style: int = 0, duration: int = 0, low_light: bool = True, heartbeat: int = 2,
+    cmn = inspect.currentframe().f_code.co_name  # current method name
+    
+    def __init__(self,
+                 clock_style: int = 0,
+                 duration: int = 0,
+                 low_light: bool = True,
+                 heartbeat: int = 2,
                  numbers: dict = gs.NUMBERS_8x8,
                  perimeter: dict = gs.PERIMETER,
                  colortable: dict = gs.COLORTABLE,
@@ -50,18 +57,22 @@ class LedClock:
 
         # 0: hour as integer in center 6x6, minutes as single dot on perimeter
         # 1: hour as integer in center 6x6, minutes as continuous line on perimeter
-        # 2: minutes as integer in center 6x6, hours as 2 or 3 pixel bar on perimeter
+        # 2: minutes as integer in center 6x6, hours as 2 or 3 pixel bar on perimeter - 12hour system
+        # 3: minutes as integer in center 6x6, hours as 2 or 3 pixel bar (am) or 2 pixel range (pm) on perimeter - 24h
         self.clock_style: int           = clock_style
         
         self.curr_time_string = ""
+        
+        self.exit_signal = True
 
     def run(self):
         """=== Method name: run ========================================================================================
         Method actually runs instance.
         ========================================================================================== by Sziller ==="""
+        self.exit_signal = False
         time_now = time.time()
         time_at_end = time_now + self.duration
-        while time_now <= time_at_end:
+        while time_now <= time_at_end and not self.exit_signal:
             if self.duration:
                 time_now = time.time()  # if no duration defined, infinite loop
             cst = time.time() - 3600 * self.delta_t_h - 60 * self.delta_t_m  # Current System Time
@@ -80,48 +91,51 @@ class LedClock:
         bin_matrix_perim_comp = []
 
         if self.clock_style in [0, 1]:
-            unit = 28.0 / 60  # 28 is the nr of perimeter cells
-            min_unit = minute * unit + 1
-            bin_matrix_hours = list_flatten(self.numbers[hour])
-
+            bin_matrix_hour = list_flatten(self.numbers[hour])
+            min_unit = minute * (28.0 / 60) + 1  # 28 is the nr of perimeter cells
             for row in self.perimeter:
-                bin_matrix_perim_comp.append(logical_list_entry_limit_substitute(row, min_unit, 0, 1, self.clock_style))
-            bin_matrix_perim = list_flatten(bin_matrix_perim_comp)
-
-            col_matrix_hours = logical_list_entry_substitute(bin_matrix_hours,
-                                                             self.colortable['background'],
-                                                             self.colortable['number'])
-            col_matrix_perim = logical_list_entry_substitute(bin_matrix_perim,
-                                                             self.colortable['background'],
-                                                             self.colortable['perim'])
-            image = logical_list_combine_adv(col_matrix_perim,
-                                             col_matrix_hours,
-                                             self.colortable['background'])
-        elif self.clock_style == 2:
-            hour_unit = hour % 12
-            bin_matrix_mins = list_flatten(self.numbers[minute])
-
+                bin_matrix_perim_comp.append(logical_list_entry_limit_substitute(list_in=row,
+                                                                                 threshold=min_unit,
+                                                                                 false=0,
+                                                                                 true=1,
+                                                                                 is_line=self.clock_style))
+            bin_matrix_minutes = list_flatten(bin_matrix_perim_comp)
+            image = self.setup_display_area(bin_matrix_field=bin_matrix_hour, bin_matrix_perim=bin_matrix_minutes)
+        elif self.clock_style in [2, 3]:
+            bin_matrix_minutes = list_flatten(self.numbers[minute])
+            hour_unit = hour % (12 * (self.clock_style - 1))
             for row in self.perimeter:
-                bin_matrix_perim_comp.append(logical_list_entry_dict_substitute(row, hour_unit, 0, 1))
-            bin_matrix_perim = list_flatten(bin_matrix_perim_comp)
-
-            col_matrix_hours = logical_list_entry_substitute(bin_matrix_mins,
-                                                             self.colortable['background'],
-                                                             self.colortable['number'])
-            col_matrix_perim = logical_list_entry_substitute(bin_matrix_perim,
-                                                             self.colortable['background'],
-                                                             self.colortable['perim'])
-            image = logical_list_combine_adv(col_matrix_perim,
-                                             col_matrix_hours,
-                                             self.colortable['background'])
+                bin_matrix_perim_comp.append(logical_list_entry_dict_substitute(list_in=row,
+                                                                                item=hour_unit,
+                                                                                false=0,
+                                                                                true=1))
+            bin_matrix_hour = list_flatten(bin_matrix_perim_comp)
+            image = self.setup_display_area(bin_matrix_field=bin_matrix_minutes, bin_matrix_perim=bin_matrix_hour)
         else:
-            print("ERROR: no image was defined")
+            print("[  ERROR]: No clock-style recognized. - sais {}".format(self.cmn))
             image = False
 
         if image:
             self.sense.set_pixels(image)
-            
-            
+        else:
+            print("[  ERROR]: No image to display. - sais {}".format(self.cmn))
+        
+    def setup_display_area(self, bin_matrix_field, bin_matrix_perim):
+        """===Method name: setup_display_area ==========================================================================
+        Transforming binary matrix data into colored, led display information
+        ========================================================================================== by Sziller ==="""
+        col_matrix_field = logical_list_entry_substitute(bin_matrix_field,
+                                                         self.colortable['background'],
+                                                         self.colortable['number'])
+        col_matrix_perim = logical_list_entry_substitute(bin_matrix_perim,
+                                                         self.colortable['background'],
+                                                         self.colortable['perim'])
+        image = logical_list_combine_adv(col_matrix_perim,
+                                         col_matrix_field,
+                                         self.colortable['background'])
+        return image
+        
+        
 def logical_list_entry_limit_substitute(list_in, threshold, false, true, is_line=1):
     """=== Function name: logical_list_entry_limit_substitute ==========================================================
     converts logical lists entries into entries represented by "false" or "true"
@@ -150,7 +164,9 @@ def logical_list_entry_dict_substitute(list_in, item, false, true, dict_in: dict
         data = dict_in
     else:
         data = {0: [28, 1], 1: [2, 3, 4], 2: [4, 5, 6], 3: [7, 8], 4: [9, 10, 11], 5: [11, 12, 13],
-                6: [14, 15], 7: [16, 17, 18], 8: [18, 19, 20], 9: [21, 22], 10: [23, 24, 25], 11: [25, 26, 27]}
+                6: [14, 15], 7: [16, 17, 18], 8: [18, 19, 20], 9: [21, 22], 10: [23, 24, 25], 11: [25, 26, 27],
+                12: [27, 2], 13: [2, 4], 14: [4, 6], 15: [6, 9], 16: [9, 11], 17: [11, 13],
+                18: [13, 16], 19: [16, 18], 20: [18, 20], 21: [20, 23], 22: [23, 25], 23: [25, 27]}
     return [true if _ in data[item] else false for _ in list_in]
 
 
@@ -243,7 +259,3 @@ def list_flatten(list_in):
             answer.append(y)
     return answer
 
-
-if __name__ == "__main__":
-    clock = LedClock(clock_style=1, duration=0, low_light=False)
-    clock.run()
